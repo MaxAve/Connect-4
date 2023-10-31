@@ -1,0 +1,11 @@
+body {
+    background-color: rgb(56, 53, 53);
+}
+
+#game-canvas {
+    text-align: center;
+}
+
+#game {
+    background-color: rgb(28, 26, 26);
+}
