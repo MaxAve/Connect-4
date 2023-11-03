@@ -1,5 +1,8 @@
-let winner = 0; // Current game winner
 let gameRunning = true;
+
+let playAgainstCPU = true;
+let winner = 0; // Current game winner
+let score = [0, 0]; // Current score
 
 // Generate row masks
 function generateRowMasks() {
@@ -32,10 +35,10 @@ function generateRowMasks() {
 const rowMasks = generateRowMasks(); // Row mask (4 in a row)
 
 class Board {
-    constructor() {
-        this.bitboardPlayer1 = BigInt(0);
-        this.bitboardPlayer2 = BigInt(0);
-        this.flags = 1;
+    constructor(board1, board2, flags) {
+        this.bitboardPlayer1 = board1;
+        this.bitboardPlayer2 = board2;
+        this.flags = flags;
     }
 
     // Returns winner (1 = player1, 0 = draw, -1 = player2)
@@ -96,21 +99,131 @@ class Board {
     }
 }
 
-let gameBoard = new Board(); // Main game board
+// Evaluations for 
+const distributionEval = [
+    10, 15, 20, 22, 20, 15, 10,
+    10, 15, 20, 22, 20, 15, 10,
+    10, 15, 20, 22, 20, 15, 10,
+    10, 15, 20, 22, 20, 15, 10,
+    10, 15, 20, 22, 20, 15, 10,
+    10, 15, 20, 22, 20, 15, 10
+];
+
+// Evaluates disc distribution
+function evalDiscDistribution(board) {
+    let eval = 0;
+    for(let i = 0; i < 42; i++) {
+        if(board.bitboardPlayer1 & (1n << BigInt(i))) {
+            eval += distributionEval[i];
+        }
+    }
+    for(let i = 0; i < 42; i++) {
+        if(board.bitboardPlayer2 & (1n << BigInt(i))) {
+            eval -= distributionEval[i];
+        }
+    }
+    return eval;
+}
+
+// Minimax algorithm
+function minimax(board, maximizing, depth, alpha, beta) {
+    let bestEval = [0, 0]; // [eval, move]
+
+    // Evaluate if the node is a leaf node, else call minimax recursively
+    if(depth === 0 || board.getWinner() != 0 || board.isFull()) {
+        return [board.getWinner() * 100 + evalDiscDistribution(board) - (depth * (maximizing ? 1 : -1)), -1];
+    } else {
+        if(maximizing) {
+            bestEval[0] = -Infinity;
+
+            // Create instances of hypothetical positions for each legal move
+            for(let i = 6; i >= 0; i--) {
+                if(board.getTop(i) > 0) {
+                    let hypotheticalBoard = new Board(board.bitboardPlayer1, board.bitboardPlayer2, 1); // Hypothetical board instance
+                    hypotheticalBoard.placeDisc(i); // Hypothetical move
+
+                    // Call minimax algorithm on new position
+                    const hypotheticalEval = minimax(hypotheticalBoard, false, depth-1, alpha, beta);
+
+                    // Store the best possible outcome
+                    if(bestEval[0] < hypotheticalEval[0]) {
+                        bestEval[0] = hypotheticalEval[0];
+                        bestEval[1] = i;
+                    }
+                    
+                    // Alpha-beta pruning
+                    let _alpha = Math.max(alpha, bestEval[0]);
+                    if(beta <= _alpha) {
+                        break;
+                    }
+                }
+            }
+        } else {
+            bestEval[0] = Infinity;
+
+            // Create instances of hypothetical positions for each legal move
+            for(let i = 6; i >= 0; i--) {
+                if(board.getTop(i) > 0) {
+                    let hypotheticalBoard = new Board(board.bitboardPlayer1, board.bitboardPlayer2, 0); // Hypothetical board instance
+                    hypotheticalBoard.placeDisc(i); // Hypothetical move
+
+                    // Call minimax algorithm on new position
+                    const hypotheticalEval = minimax(hypotheticalBoard, true, depth-1, alpha, beta);
+
+                    // Store the best possible outcome
+                    if(bestEval[0] > hypotheticalEval[0]) {
+                        bestEval[0] = hypotheticalEval[0];
+                        bestEval[1] = i;
+                    }
+
+                    // Alpha-beta pruning
+                    _beta = Math.min(beta, bestEval[0]);
+                    if(_beta <= alpha) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Reutrn the best possible outcome for this position
+        return bestEval;
+    }
+}
+
+// Main game board
+let gameBoard = new Board(BigInt(0), BigInt(0), 1);
 
 // HTML canvas and browser context
 let canvas = document.getElementById("game");
 let context = canvas.getContext("2d");
 
 // Connect 4 disc size
-const discRadius = 50;
+const discRadius = 45;
 const distanceBetweenCells = 15;
 
 // Grid X, Y positions relative to the canvas
 const gridX = discRadius + (canvas.width - 7*(discRadius*2+distanceBetweenCells))/2;
-const gridY = discRadius + (canvas.height - 6*(discRadius*2+distanceBetweenCells))/2;
+const gridY = discRadius * 3;
 
 let selectedColumn = 0; // Current selected column on the connect 4 grid
+
+/*
+Board reset buttons
+*/
+
+document.getElementById("vscpu").onclick = () => {
+    gameBoard = new Board(BigInt(0), BigInt(0), 1);
+    playAgainstCPU = true;
+    winner = 0;
+    gameRunning = true;
+};
+
+document.getElementById("vsp2").onclick = () => {
+    gameBoard = new Board(BigInt(0), BigInt(0), 1);
+    playAgainstCPU = false;
+    winner = 0;
+    gameRunning = true;
+};
 
 // Gets selected column
 canvas.addEventListener("mousemove", (event) => {
@@ -131,9 +244,31 @@ canvas.addEventListener("mousemove", (event) => {
 // Throws in a disc
 canvas.addEventListener("click", (event) => {
     if(winner === 0 && gameRunning) {
+        // Player move
         gameBoard.placeDisc(6 - selectedColumn);
         gameBoard.flags ^= 1; // Swap turns
         winner = gameBoard.getWinner(); // Check for 4 in a row
+        if(winner === 1) {
+            score[0]++;
+            gameRunning = false;
+        } else if(winner === -1) {
+            score[1]++;
+            gameRunning = false;
+        }
+
+        // Computer move
+        if(playAgainstCPU) {
+            gameBoard.placeDisc(minimax(gameBoard, false, 6, -Infinity, Infinity)[1]);
+            gameBoard.flags ^= 1; // Swap turns
+            winner = gameBoard.getWinner(); // Check for 4 in a row
+            if(winner === 1) {
+                score[0]++;
+                gameRunning = false;
+            } else if(winner === -1) {
+                score[1]++;
+                gameRunning = false;
+            }
+        }
     }
 });
 
@@ -176,6 +311,11 @@ function gameLoop() {
     // Draw discs
     drawDiscs(gameBoard);
 
+    // Draw score
+    context.fillStyle = 'white';
+    context.font = "30px Arial";
+    context.fillText(`Score: ${score[0]} - ${score[1]}`, canvas.width/2-90, canvas.height - 70);
+
     if(winner === 0) {
         // Check for draws
         if(gameBoard.isFull()) {
@@ -200,7 +340,11 @@ function gameLoop() {
         } else {
             context.fillStyle = 'yellow';
             context.font = "bold 40px Arial";
-            context.fillText("Player 2 wins!", canvas.width/2 - 140, 50);
+            if(playAgainstCPU) {
+                context.fillText("CPU wins!", canvas.width/2 - 120, 50);
+            } else {
+                context.fillText("Player 2 wins!", canvas.width/2 - 140, 50);
+            }
             gameRunning = false;
         }
     }
