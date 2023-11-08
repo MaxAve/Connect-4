@@ -152,8 +152,8 @@ function minimax(board, maximizing, depth, alpha, beta) {
                     }
                     
                     // Alpha-beta pruning
-                    let _alpha = Math.max(alpha, bestEval[0]);
-                    if(beta <= _alpha) {
+                    alpha = Math.max(alpha, bestEval[0]);
+                    if(beta <= alpha) {
                         break;
                     }
                 }
@@ -177,8 +177,8 @@ function minimax(board, maximizing, depth, alpha, beta) {
                     }
 
                     // Alpha-beta pruning
-                    _beta = Math.min(beta, bestEval[0]);
-                    if(_beta <= alpha) {
+                    beta = Math.min(beta, bestEval[0]);
+                    if(beta <= alpha) {
                         break;
                     }
                 }
@@ -227,7 +227,7 @@ document.getElementById("vsp2").onclick = () => {
 
 // Gets selected column
 canvas.addEventListener("mousemove", (event) => {
-    if(gameRunning) {
+    if((gameBoard.flags & 1) && gameRunning) {
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
